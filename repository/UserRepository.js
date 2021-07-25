@@ -1,59 +1,81 @@
 class UserRepository{
     constructor(connection){
         this.connection = connection
-        connection.connect()
+        connection.connect().catch(e => { throw e })
         this.disponibility = 8
     }
 
-    createUser = async (username, res) => {
-        try{
-            this.connection.query(`insert into users (username) values ("${username}");`, 
-                (err, { insertId }) => {
-                    if(err) throw err
-                    res.json({
-                        id: insertId,
-                        username: username
-                    })
-                })
-
-        } catch(err) {
+    createUser = async username => {
+        const queryText = 'INSERT INTO users (username) VALUES ($1) RETURNING *'
+        const params = [ username ]
+        try {
+            const res = await this.connection.query(queryText, params)
+            const { rows } = res
+            return rows[0]
+        } catch(err){
             throw err
-        } finally {
-            this.connection.end()
         }
     }
 
-    takeResource = async (id, resources, res) => {
+    takeResource = async (id, resources) => {
         
+        const queryText = 'INSERT INTO taken_resources (hour, user_id) VALUES ($1,$2)'
+        const resourcesSaved = {}
+
         for(const [hour, state] of Object.entries(resources)){
-            if(state) this.connection.query(`insert into taken_resources (hour, user_id) values ("${hour}","${id}")`)
+            const params = [ hour, id ]
+            if(state) {
+                try{
+                    await this.connection.query(queryText, params)
+                    resourcesSaved[hour] = true
+                } catch (err){
+                    throw err
+                }
+                
+            }
         }
 
-        res.sendStatus(200)
+        return resourcesSaved
     }
 
-    quantityByHour = async (hour, res) => {
-        this.connection.query(`select id from taken_resources where hour="${hour}"`,
-        (err, result, fields) => {
-            if(err) throw err
-            res.send({ quantity: this.disponibility - result.length })
-        })        
+    quantityByHour = async hour => {
+        const queryText = 'SELECT id FROM taken_resources WHERE hour=$1'
+        const params = [ hour ]
+        try{
+            const res = await this.connection.query(queryText, params)
+            const { rows } = res
+            const disponibility = rows.length
+            return (8 - disponibility)
+        } catch(err){
+            throw err
+        }
+        
     }
 
-    login = (username, callback) => {
-        this.connection.query(`select * from users where username="${username}"`,
-        (err, result, fields) => {
-            if(err) throw err
-            callback(result[0])
-        })
+    login = async username => {
+        const queryText = 'SELECT * FROM users WHERE username=$1'
+        const params =[ username ]
+        try{
+            const res = await this.connection.query(queryText, params)
+            const { rows } = res 
+            return rows[0]
+        } catch(err){
+            throw err
+        }
     }
 
-    hourIsTaken = (id, hour, callback) => {
-        this.connection.query(`select * from taken_resources where (id=${id} and hour="${hour}")`,
-        (err, result, fields) => {
-            if(err) throw err
-            callback(result)
-        })
+    hourIsTaken = async (id, hour) => {
+        const queryText = 'SELECT * FROM taken_resources WHERE (user_id=$1 and hour=$2)'
+        const params = [ id, hour ]
+        
+        try{
+            const res = await this.connection.query(queryText, params)
+            const { rows } = res
+            return Boolean(rows.length)
+        } catch(err){
+            throw err
+        }
+        
     }
 
     cleanup = () => {

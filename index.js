@@ -1,15 +1,19 @@
 const express           = require('express')
-const mysql             = require('mysql')
-const connectionConfig  = require('./config/db')
+const { Client }        = require('pg')
 const UserRepository    = require('./repository/UserRepository')
 const cleanup           = require('./cleanup')
-const { user } = require('./config/db')
+console.log(require('dotenv').config())
 
 const app = express()
 const PORT = process.env.PORT || 8000
 
 
-const connection = mysql.createConnection(connectionConfig)
+const connection = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+})
 
 const userRepository = new UserRepository(connection)
 
@@ -18,8 +22,6 @@ app.use(express.json())
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*')
     res.header('Access-Control-Allow-Headers', '*') 
-    /* 'Authorization, X-API-KEY, Origin, X-Requested-With',
-    'Content-Type', 'Accept', 'Access-Control-Allow-Request-Method') */
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
     res.header('Allow', 'GET, POST, OPTIONS, PUT, DELETE')
     next()
@@ -29,46 +31,73 @@ app.use((req, res, next) => {
 app.post('/create-user', async (req, res) => {
     const { username } = req.query
     
-    if(!username)
-        res.badRequest()
+    if(!username){
+        res.sendStatus(400)
+        return
+    }
 
     try{
-        await userRepository.createUser(username, res)
+        const createdUser = await userRepository.createUser(username)
+        res.json(createdUser)
     } catch(err){
+        throw err
+    }
+})
+
+app.post('/login', async (req, res) => {
+    const { username } = req.query
+
+    if(!username){
+        res.sendStatus(400)
+        return
+    }
+
+    try{
+        const userLogged = await userRepository.login(username)
+        res.json({ userLogged })
+    } catch (err){
+        res.sendStatus(500)
         throw err
     }
 })
 
 app.post('/take-resources', async (req, res) => {
     const { id } = req.query
-    if(!id)
+    if(!id){
         res.sendStatus(400)
+        return
+    }
 
     const { resourcesToSave } = req.body
-    userRepository.takeResource(id, resourcesToSave, res)
+    try {
+        const resourcesSaved = await userRepository.takeResource(id, resourcesToSave)
+        res.json(resourcesSaved)
+    } catch(err){
+        throw err
+    }
 })
+
 
 app.get('/disponibility', async (req, res) => {
     const { hour } = req.query
-    userRepository.quantityByHour(hour, res)
-    
+    try{
+        const disponibility = await userRepository.quantityByHour(hour)
+        res.json({ disponibility })
+    } catch(err){
+        throw err
+    }   
 })
 
-app.get('/hour-is-taken', (req, res) => {
+app.get('/hour-is-taken', async (req, res) => {
     const { id, hour } = req.query
-    userRepository.hourIsTaken(id, hour, result => {
-        if(result.length >= 1) res.send({ hourIsTaken: true })
-        else res.send({ hourIsTaken: false }) 
-    })
-})
-
-app.post('/login', (req, res) => {
-    const { username } = req.query
-    userRepository.login(username, ({username, id}) => {
-        res.send({ username: username, id: id})
-    })
+    try{
+        const isTaken = await userRepository.hourIsTaken(id, hour)
+        res.json(isTaken)
+    } catch(err){
+        throw err
+    }
 })
 
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`))
 
-cleanup.Cleanup(() => userRepository.cleanup())
+cleanup.Cleanup(() => userRepository.cleanup()) 
