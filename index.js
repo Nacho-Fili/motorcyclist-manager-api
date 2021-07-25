@@ -98,6 +98,8 @@ app.get('/hour-is-taken', async (req, res) => {
     }
 })
 
+app.get('/', (req, res) => res.send('This is an API'))
+
 app.listen(PORT, () => console.log(`Listening on port ${PORT}`))
 
 cleanup.Cleanup(() => userRepository.cleanup()) 
